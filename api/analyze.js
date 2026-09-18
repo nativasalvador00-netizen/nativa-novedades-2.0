@@ -25,15 +25,19 @@ PARA CADA CASO incluye exactamente estos campos:
 - hora (ej: "10:35 a.m.")
 - razon (qué pasó, 1-2 oraciones en español)
 - respuesta (qué respondió Nativa y/o la transportadora, con detalle)
-- contesto (EXACTAMENTE uno de: "✅ SÍ" | "❌ SIN RESPUESTA" | "⚠️ PARCIAL" | "⚠️ CRITICO")
+- contesto: usa EXACTAMENTE una de estas opciones según estos criterios:
+  * "✅ SÍ" = el cliente confirmó recibir, se coordinó entrega, se ordenó devolución, o se resolvió el problema
+  * "❌ SIN RESPUESTA" = Nativa no respondió a la transportadora, o el cliente no fue contactado, o no hay acción registrada
+  * "⚠️ PARCIAL" = hubo respuesta pero sin resolución definitiva, o el cliente cambió de fecha durante el día
+  * "⚠️ CRITICO" = caso escalado sin respuesta, entregado pero cliente dice que no recibió, o guía con error grave sin resolver
 - notas (estado final en MAYÚSCULAS, breve)
 
 STATS:
-- total: suma de novedades + seguimientos
+- total: suma de TODOS los casos (novedades + seguimientos)
 - resueltas: cuántas tienen "✅ SÍ"
 - pendientes: cuántas tienen "❌ SIN RESPUESTA"
 - criticos: cuántas tienen "⚠️ PARCIAL" o "⚠️ CRITICO"
-- pct_resueltas: entero (resueltas/total*100)
+- pct_resueltas: entero exacto (resueltas * 100 / total, redondeado)
 - motivo_frecuente: motivo más común en novedades (frase corta en minúsculas)
 
 RESPONDE ÚNICAMENTE CON JSON VÁLIDO. Sin markdown, sin texto adicional.
