@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nativa SV — Procesador de Novedades</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; background: #F0F2F5; }
+  .drop-zone { transition: all .2s; }
+  .drop-zone.drag-over { border-color: #E63946 !important; background: #FFF5F5 !important; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin 1s linear infinite; }
+  .report-box { white-space: pre-wrap; font-size: 13px; line-height: 1.7; }
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+<div class="max-w-xl mx-auto">
+
+  <!-- Header -->
+  <div class="mb-8 text-center">
+    <div class="inline-flex items-center gap-2 mb-2">
+      <div class="w-2 h-8 rounded-full" style="background:#E63946"></div>
+      <span class="font-bold text-xl tracking-tight" style="color:#1A1A2E">NATIVA SV</span>
+    </div>
+    <p class="text-sm text-gray-500">Procesador de Novedades · Drop x Boxful</p>
+  </div>
+
+  <!-- ── IDLE ── -->
+  <div id="s-idle">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4 space-y-5">
+
+      <!-- Drop zone -->
+      <div class="block">
+        <span class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          📂 Chat exportado (.zip)
+        </span>
+        <div id="drop-zone"
+          class="drop-zone border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-red-300 hover:bg-red-50"
+          onclick="document.getElementById('file-input').click()">
+          <div id="dz-icon" class="text-3xl mb-2">📂</div>
+          <div id="dz-text" class="text-sm text-gray-500">Arrastrá el .zip del chat o hacé clic aquí</div>
+        </div>
+        <input id="file-input" type="file" accept=".zip" class="hidden">
+      </div>
+
+      <!-- Date -->
+      <div class="block">
+        <span class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          📅 Fecha a analizar
+        </span>
+        <input id="date-input" type="date"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-300">
+      </div>
+
+      <!-- Button -->
+      <button id="btn-process"
+        class="w-full py-3.5 rounded-xl font-semibold text-white text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        style="background:#1A1A2E"
+        onclick="startProcessing()" disabled>
+        ▶ Procesar novedades
+      </button>
+    </div>
+  </div>
+
+  <!-- ── LOADING ── -->
+  <div id="s-loading" class="hidden">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full spinner"></div>
+        <span class="font-semibold text-sm" style="color:#1A1A2E">Procesando...</span>
+      </div>
+      <div class="space-y-3" id="steps">
+        <div class="flex items-center gap-3" data-step="0"><span class="step-icon text-lg">⏳</span><span class="text-sm text-gray-500">Leyendo el chat exportado</span></div>
+        <div class="flex items-center gap-3" data-step="1"><span class="step-icon text-lg">⏳</span><span class="text-sm text-gray-500">Analizando novedades con IA</span></div>
+        <div class="flex items-center gap-3" data-step="2"><span class="step-icon text-lg">⏳</span><span class="text-sm text-gray-500">Generando archivo Excel</span></div>
+        <div class="flex items-center gap-3" data-step="3"><span class="step-icon text-lg">⏳</span><span class="text-sm text-gray-500">Armando reporte de cierre</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DONE ── -->
+  <div id="s-done" class="hidden space-y-4">
+    <div id="stats-row" class="grid grid-cols-3 gap-3"></div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">📋 Reporte de cierre</span>
+        <button onclick="copyReport()" id="copy-btn"
+          class="text-xs px-3 py-1.5 rounded-lg font-medium" style="background:#F0F2F5;color:#1A1A2E">
+          Copiar
+        </button>
+      </div>
+      <div id="report-text" class="report-box text-gray-700 bg-gray-50 rounded-xl p-4"></div>
+    </div>
+
+    <button onclick="downloadExcel()"
+      class="w-full py-4 rounded-2xl font-semibold text-white text-sm flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
+      style="background:#1A1A2E">
+      ⬇️ Descargar Excel de novedades
+    </button>
+
+    <button onclick="reset()"
+      class="w-full py-3 rounded-2xl text-sm font-medium text-gray-500 border border-gray-200 bg-white hover:bg-gray-50 transition-all">
+      Procesar otro chat
+    </button>
+  </div>
+
+  <!-- ── ERROR ── -->
+  <div id="s-error" class="hidden">
+    <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-6 text-center">
+      <div class="text-3xl mb-2">⚠️</div>
+      <p class="font-semibold text-sm" style="color:#1A1A2E">Algo salió mal</p>
+      <p id="error-msg" class="text-xs text-gray-500 mt-1 mb-4"></p>
+      <button onclick="reset()" class="w-full py-3 rounded-xl text-sm font-medium text-white" style="background:#E63946">
+        Intentar de nuevo
+      </button>
+    </div>
+  </div>
+
+</div>
+<script>
+let zipFile = null, excelBytes = null;
+
+window.addEventListener('DOMContentLoaded', () => {
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  document.getElementById('date-input').value = y.toISOString().slice(0, 10);
+  document.getElementById('date-input').addEventListener('change', checkReady);
+
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+  document.getElementById('file-input').addEventListener('change', e => handleFile(e.target.files[0]));
+});
+
+function handleFile(file) {
+  if (!file?.name.endsWith('.zip')) return;
+  zipFile = file;
+  document.getElementById('dz-icon').textContent = '✅';
+  document.getElementById('dz-text').textContent = file.name;
+  checkReady();
+}
+
+function checkReady() {
+  document.getElementById('btn-process').disabled = !(zipFile && document.getElementById('date-input').value);
+}
+
+function setStep(n) {
+  document.querySelectorAll('[data-step]').forEach(el => {
+    const i = parseInt(el.dataset.step);
+    const icon = el.querySelector('.step-icon');
+    const label = el.querySelector('span:last-child');
+    if (i < n) { icon.textContent = '✅'; label.className = 'text-sm text-gray-400'; }
+    else if (i === n) { icon.textContent = '🔄'; label.className = 'text-sm font-medium'; label.style.color = '#1A1A2E'; }
+    else { icon.textContent = '⏳'; label.className = 'text-sm text-gray-400'; }
+  });
+}
+
+async function startProcessing() {
+  show('s-loading');
+  const dateStr = document.getElementById('date-input').value;
+  try {
+    setStep(0);
+    const chatText = await extractChatFromZip(zipFile);
+    const filtered = filterByDate(chatText, dateStr);
+    if (!filtered.trim()) throw new Error('No se encontraron mensajes en esa fecha. Verificá el ZIP y la fecha.');
+
+    setStep(1);
+    const data = await analyzeChat(filtered, dateStr);
+
+    setStep(2);
+    excelBytes = buildExcel(data, dateStr);
+
+    setStep(3);
+    const report = buildReport(data.stats, dateStr);
+    showResults(data.stats, report);
+  } catch (err) {
+    document.getElementById('error-msg').textContent = err.message;
+    show('s-error');
+  }
+}
+
+async function extractChatFromZip(file) {
+  const zip = await JSZip.loadAsync(file);
+  const candidates = [];
+  zip.forEach((path, f) => { if (!f.dir && (path.endsWith('.txt') || path.endsWith('.md'))) candidates.push(f); });
+  if (!candidates.length) throw new Error('No se encontró el archivo de chat dentro del ZIP.');
+  candidates.sort((a, b) => {
+    const aT = a.name.endsWith('.txt') ? 0 : 1;
+    const bT = b.name.endsWith('.txt') ? 0 : 1;
+    return aT - bT || a.name.length - b.name.length;
+  });
+  return await candidates[0].async('string');
+}
+
+function filterByDate(chatText, dateISO) {
+  const [y, m, d] = dateISO.split('-');
+  const t1 = `${parseInt(m)}/${parseInt(d)}/${y.slice(2)}`;
+  const t2 = `${parseInt(d)}/${parseInt(m)}/${y.slice(2)}`;
+  const lines = chatText.split('\n');
+  const result = [];
+  let inDate = false;
+  const pat = /^[\u200e\u200f\u202a-\u202e\u2066-\u2069\u00a0\s]*\[?\d{1,2}\/\d{1,2}\/\d{2}/;
+  for (const line of lines) {
+    if (pat.test(line)) inDate = line.includes(t1) || line.includes(t2);
+    if (inDate) result.push(line);
+  }
+  return result.join('\n');
+}
+
+async function analyzeChat(chatText, dateISO) {
+  const res = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chatText, date: dateISO })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Error del servidor: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.novedades) throw new Error('La IA no devolvió datos válidos.');
+  return data;
+}
+
+function buildExcel(data, dateISO) {
+  const [y, m, d] = dateISO.split('-');
+  const label = `${d} / ${m} / ${y}`;
+  const ws = {}, merges = [], rowMeta = [];
+  const B = { top:{style:'thin',color:{rgb:'CCCCCC'}}, bottom:{style:'thin',color:{rgb:'CCCCCC'}}, left:{style:'thin',color:{rgb:'CCCCCC'}}, right:{style:'thin',color:{rgb:'CCCCCC'}} };
+  const s = (rgb, font, aln) => ({ fill:{patternType:'solid',fgColor:{rgb}}, font, alignment:aln, border:B });
+  const wb_ = sz => ({ bold:true, color:{rgb:'FFFFFF'}, sz, name:'Arial' });
+  const nb_ = sz => ({ bold:false, color:{rgb:'000000'}, sz, name:'Arial' });
+  const cc = { horizontal:'center', vertical:'center', wrapText:true };
+  const lt = { horizontal:'left', vertical:'top', wrapText:true };
+  const lc = { horizontal:'left', vertical:'center', wrapText:true };
+  const ST = { title:s('E63946',wb_(12),cc), sec:s('2B2D42',wb_(9),cc), hdr:s('1A1A2E',wb_(8),cc) };
+  const HDRS = ['#','N° GUÍA','HORA','RAZÓN DE LA NOVEDAD','RESPUESTA DADA','¿CONTESTÓ?','SEGUIMIENTO / NOTAS'];
+
+  function bg(c,alt) {
+    if (c.includes('SIN RESPUESTA')) return 'FFF3CD';
+    if (c.includes('CRITICO')||c.includes('PARCIAL')) return 'FFDCCC';
+    return alt?'F8F9FA':'FFFFFF';
+  }
+  function c(r,col,v,st) { ws[XLSX.utils.encode_cell({r,c:col})]={v:String(v??''),t:'s',s:st}; }
+  function merge(r) { merges.push({s:{r,c:0},e:{r,c:6}}); }
+
+  function section(r0, title, rows) {
+    c(r0,0,title,ST.sec); merge(r0); rowMeta.push({hpx:22}); r0++;
+    HDRS.forEach((h,i)=>c(r0,i,h,ST.hdr)); rowMeta.push({hpx:26}); r0++;
+    rows.forEach((row,i)=>{
+      const fill=bg(row.contesto||'',i%2===1);
+      const dL=s(fill,nb_(7.5),lt), dC=s(fill,nb_(7.5),cc);
+      [row.num,row.guia,row.hora,row.razon,row.respuesta,row.contesto,row.notas]
+        .forEach((v,col)=>c(r0,col,v,(col===0||col===2||col===5)?dC:dL));
+      rowMeta.push({hpx:56}); r0++;
+    });
+    rowMeta.push({hpx:8}); return r0+1;
+  }
+
+  c(0,0,`NOVEDADES NATIVA SV — ${label}`,ST.title); merge(0); rowMeta.push({hpx:28});
+  rowMeta.push({hpx:6});
+  let r = section(2,'📦  NOVEDADES DE ENTREGA  —  Reportadas por Boxful Customer Success / VIP SV',data.novedades||[]);
+  r = section(r,'📋  SEGUIMIENTOS PROACTIVOS  —  Nativa Essential al equipo Drop / VIP SV',data.seguimientos||[]);
+  c(r,0,'LEYENDA: Blanco/gris = ✅ Con respuesta  |  Amarillo = ❌ Sin respuesta  |  Salmón = ⚠️ Crítico / Parcial',{font:{italic:true,color:{rgb:'555555'},sz:7,name:'Arial'},alignment:lc}); merge(r); rowMeta.push({hpx:16});
+
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r,c:6}});
+  ws['!merges']=merges; ws['!cols']=[5,14,13,42,62,24,35].map(w=>({wch:w}));
+  ws['!rows']=rowMeta; ws['!views']=[{state:'frozen',ySplit:4}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,`Novedades ${d}-${m}-${y}`);
+  return XLSX.write(wb,{type:'array',bookType:'xlsx'});
+}
+
+function buildReport(stats, dateISO) {
+  const [y,m,d] = dateISO.split('-');
+  const pct = stats.pct_resueltas ?? Math.round(stats.resueltas/stats.total*100);
+  const crit = stats.criticos;
+  return `📋 *CIERRE DE NOVEDADES — ${d}/${m}/${y}*
+
+Se gestionaron *${stats.total} novedades* el día de ayer. El *${pct}%* quedó resuelto en el día.
+
+El motivo más frecuente fue *${stats.motivo_frecuente}*.
+
+Quedaron *${stats.pendientes} pendientes* sin cierre${crit>0?` y *${crit} caso${crit>1?'s':''}* crítico${crit>1?'s':''} que requieren respuesta de la transportadora`:''}.
+
+El archivo de detalle ya fue enviado a la plataforma logística. ✅`;
+}
+
+function showResults(stats, report) {
+  const pct = stats.pct_resueltas ?? Math.round(stats.resueltas/stats.total*100);
+  const pend = stats.pendientes+stats.criticos;
+  document.getElementById('stats-row').innerHTML=[
+    ['Total',stats.total,'#1A1A2E'],
+    [`${pct}% resueltas`,stats.resueltas,'#22c55e'],
+    [`${pend} pendientes`,pend,stats.criticos>0?'#E63946':'#f59e0b']
+  ].map(([l,v,color])=>`<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center"><div class="text-2xl font-bold" style="color:${color}">${v}</div><div class="text-xs text-gray-500 mt-1">${l}</div></div>`).join('');
+  document.getElementById('report-text').textContent=report;
+  show('s-done');
+}
+
+async function copyReport() {
+  await navigator.clipboard.writeText(document.getElementById('report-text').textContent);
+  const btn=document.getElementById('copy-btn');
+  btn.textContent='✅ Copiado';
+  setTimeout(()=>btn.textContent='Copiar',2000);
+}
+
+function downloadExcel() {
+  if (!excelBytes) return;
+  const [y,m,d]=document.getElementById('date-input').value.split('-');
+  const blob=new Blob([new Uint8Array(excelBytes)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`Novedades_NativaSV_${d}-${m}-${y}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function show(id) {
+  ['s-idle','s-loading','s-done','s-error'].forEach(s=>document.getElementById(s).classList.toggle('hidden',s!==id));
+}
+
+function reset() {
+  zipFile=null; excelBytes=null;
+  document.getElementById('dz-icon').textContent='📂';
+  document.getElementById('dz-text').textContent='Arrastrá el .zip del chat o hacé clic aquí';
+  document.getElementById('file-input').value='';
+  document.getElementById('btn-process').disabled=true;
+  show('s-idle');
+}
+</script>
+</body>
+</html>
