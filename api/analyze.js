@@ -6,43 +6,50 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { chatText, date } = req.body || {};
-  if (!chatText || !date) return res.status(400).json({ error: 'Faltan datos: chatText o date' });
+  if (!chatText || !date) return res.status(400).json({ error: 'Faltan datos' });
 
   const [y, m, d] = date.split('-');
   const fecha = `${d}/${m}/${y}`;
 
-  const prompt = `Eres un asistente especializado en operaciones logísticas de dropshipping en El Salvador.
+  // Extraccion determinista de guias con regex (no IA)
+  const guiaMatches = chatText.match(/\b5\d{6}\b/g) || [];
+  const guiasUnicas = [...new Set(guiaMatches)].sort();
 
-Analiza el siguiente chat exportado del grupo "Nativa SV x Drop" y extrae TODAS las novedades del día ${fecha}.
+  const prompt = `Eres un asistente especializado en operaciones logisticas de dropshipping en El Salvador.
 
-CLASIFICACIÓN:
-- "novedades": casos reportados POR la transportadora (Boxful, VIP SV, teléfonos +503 6965 7706 o +503 7613 8221) sobre problemas de entrega con clientes.
-- "seguimientos": casos iniciados PROACTIVAMENTE por Nativa (identificada como "Tú:", "Nativa Essential" o "Daniela" en el chat) sin que la transportadora lo haya reportado primero.
+Analiza el siguiente chat del grupo "Nativa SV x Drop" del dia ${fecha}.
 
-PARA CADA CASO incluye exactamente estos campos:
-- num (número de orden, entero)
-- guia (número de guía como string, ej "5741544" o "5743356 / 5741099")
-- hora (ej: "10:35 a.m.")
-- razon (qué pasó, 1-2 oraciones en español)
-- respuesta (qué respondió Nativa y/o la transportadora, con detalle)
-- contesto: usa EXACTAMENTE una de estas opciones según estos criterios:
-  * "✅ SÍ" = el cliente confirmó recibir, se coordinó entrega, se ordenó devolución, o se resolvió el problema
-  * "❌ SIN RESPUESTA" = Nativa no respondió a la transportadora, o el cliente no fue contactado, o no hay acción registrada
-  * "⚠️ PARCIAL" = hubo respuesta pero sin resolución definitiva, o el cliente cambió de fecha durante el día
-  * "⚠️ CRITICO" = caso escalado sin respuesta, entregado pero cliente dice que no recibió, o guía con error grave sin resolver
-- notas (estado final en MAYÚSCULAS, breve)
+Se encontraron EXACTAMENTE estas guias en el chat: ${guiasUnicas.join(', ')}.
+DEBES incluir una entrada por CADA guia de esa lista, sin agregar ni quitar ninguna.
+
+Para cada guia determina si fue reportada por la TRANSPORTADORA (Boxful, VIP SV, +503 6965 7706, +503 7613 8221) va en "novedades", o si fue iniciada por NATIVA (Tu:, Nativa Essential, Daniela) va en "seguimientos".
+
+Para cada caso incluye:
+- num: numero de orden
+- guia: numero de guia exacto
+- hora: hora del primer reporte ("10:35 a.m.")
+- razon: que paso (1-2 oraciones en espanol)
+- respuesta: que respondio Nativa y la transportadora (detallado)
+- contesto: EXACTAMENTE una de estas:
+  "Si" = cliente confirmo recibir, se coordino entrega, se ordeno devolucion, o problema resuelto
+  "No" = sin accion registrada, Nativa no respondio, o cliente no contactado
+  "Parcial" = respuesta sin resolucion definitiva, o cliente cambio de fecha
+  "Critico" = caso escalado sin respuesta, entregado pero no recibido, o error grave sin resolver
+- notas: estado final en MAYUSCULAS
+
+Nota: En el JSON usa exactamente estos valores para contesto: "SI", "NO", "PARCIAL", "CRITICO"
 
 STATS:
-- total: suma de TODOS los casos (novedades + seguimientos)
-- resueltas: cuántas tienen "✅ SÍ"
-- pendientes: cuántas tienen "❌ SIN RESPUESTA"
-- criticos: cuántas tienen "⚠️ PARCIAL" o "⚠️ CRITICO"
-- pct_resueltas: entero exacto (resueltas * 100 / total, redondeado)
-- motivo_frecuente: motivo más común en novedades (frase corta en minúsculas)
+- total: ${guiasUnicas.length} (fijo, es el numero exacto de guias encontradas)
+- resueltas: cuantas tienen contesto "SI"
+- pendientes: cuantas tienen contesto "NO"
+- criticos: cuantas tienen contesto "PARCIAL" o "CRITICO"
+- pct_resueltas: entero (resueltas * 100 / total)
+- motivo_frecuente: motivo mas comun en novedades (minusculas)
 
-RESPONDE ÚNICAMENTE CON JSON VÁLIDO. Sin markdown, sin texto adicional.
+RESPONDE SOLO CON JSON VALIDO. Sin markdown ni texto adicional.
 
-CHAT DEL DÍA ${fecha}:
+CHAT:
 ${chatText}`;
 
   try {
@@ -70,6 +77,33 @@ ${chatText}`;
     const text = data.content?.find(b => b.type === 'text')?.text || '';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
+
+    // Mapear contesto de vuelta a emojis para el frontend
+    const mapContesto = (c) => {
+      if (c === 'SI')      return '✅ SÍ';
+      if (c === 'NO')      return '❌ SIN RESPUESTA';
+      if (c === 'PARCIAL') return '⚠️ PARCIAL';
+      if (c === 'CRITICO') return '⚠️ CRITICO';
+      return c;
+    };
+    (parsed.novedades || []).forEach(r => r.contesto = mapContesto(r.contesto));
+    (parsed.seguimientos || []).forEach(r => r.contesto = mapContesto(r.contesto));
+
+    // Calcular stats directamente en el servidor (no depender de la IA)
+    const todos = [...(parsed.novedades || []), ...(parsed.seguimientos || [])];
+    const resueltas = todos.filter(r => r.contesto === '✅ SÍ').length;
+    const pendientes = todos.filter(r => r.contesto === '❌ SIN RESPUESTA').length;
+    const criticos   = todos.filter(r => r.contesto?.includes('⚠️')).length;
+    const total      = todos.length;
+    parsed.stats = {
+      total,
+      resueltas,
+      pendientes,
+      criticos,
+      pct_resueltas: total > 0 ? Math.round(resueltas * 100 / total) : 0,
+      motivo_frecuente: parsed.stats?.motivo_frecuente || 'cliente no responde llamadas'
+    };
+
     res.json(parsed);
 
   } catch (err) {
