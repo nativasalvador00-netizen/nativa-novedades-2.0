@@ -27,41 +27,64 @@
     <p class="text-sm text-gray-500">Procesador de Novedades · Drop x Boxful</p>
   </div>
 
+  <!-- IDLE -->
   <div id="s-idle">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4 space-y-5">
+
+      <!-- API Key -->
+      <div id="apikey-block">
+        <span class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🔑 API Key de Anthropic</span>
+        <div class="flex gap-2">
+          <input id="api-key" type="password" placeholder="sk-ant-..."
+            class="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-300 font-mono"
+            oninput="checkReady()">
+          <button onclick="saveKey()" class="px-4 py-3 rounded-xl text-sm font-medium text-white" style="background:#1A1A2E">Guardar</button>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Se guarda en tu navegador. Nadie más la ve.</p>
+      </div>
+
+      <!-- Drop zone -->
       <div>
         <span class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">📂 Chat exportado (.zip)</span>
-        <div id="drop-zone" class="drop-zone border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-red-300 hover:bg-red-50" onclick="document.getElementById('file-input').click()">
+        <div id="drop-zone" class="drop-zone border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-red-300 hover:bg-red-50"
+          onclick="document.getElementById('file-input').click()">
           <div id="dz-icon" class="text-3xl mb-2">📂</div>
           <div id="dz-text" class="text-sm text-gray-500">Arrastrá el .zip del chat o hacé clic aquí</div>
         </div>
         <input id="file-input" type="file" accept=".zip" class="hidden">
       </div>
+
+      <!-- Fecha -->
       <div>
         <span class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">📅 Fecha a analizar</span>
         <input id="date-input" type="date" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-300">
       </div>
-      <div id="cache-notice" class="hidden text-xs text-green-600 bg-green-50 rounded-lg px-3 py-2">
-        ✅ Este chat ya fue analizado antes — se usará el resultado guardado (sin costo).
+
+      <div id="cache-notice" class="hidden text-xs text-green-600 bg-green-50 rounded-xl px-3 py-2">
+        ⚡ Este chat ya fue analizado — resultado instantáneo sin costo.
       </div>
-      <button id="btn-process" class="w-full py-3.5 rounded-xl font-semibold text-white text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed" style="background:#1A1A2E" onclick="startProcessing()" disabled>
+
+      <button id="btn-process" class="w-full py-3.5 rounded-xl font-semibold text-white text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+        style="background:#1A1A2E" onclick="startProcessing()" disabled>
         ▶ Procesar novedades
       </button>
     </div>
   </div>
 
+  <!-- LOADING -->
   <div id="s-loading" class="hidden">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full spinner"></div>
         <span class="font-semibold text-sm" style="color:#1A1A2E">Analizando con IA...</span>
       </div>
-      <p class="text-xs text-gray-400">Primera vez con este archivo — puede tardar 20-30 segundos. Las próximas veces será instantáneo.</p>
+      <p class="text-xs text-gray-400">Primera vez con este archivo. Espera 20-30 segundos. Las próximas son instantáneas.</p>
     </div>
   </div>
 
+  <!-- DONE -->
   <div id="s-done" class="hidden space-y-4">
-    <div id="cached-badge" class="hidden text-xs text-center text-green-600 bg-green-50 rounded-xl py-2">⚡ Resultado instantáneo — sin costo de API</div>
+    <div id="cached-badge" class="hidden text-xs text-center text-green-600 bg-green-50 rounded-xl py-2">⚡ Resultado guardado — sin costo de API</div>
     <div id="stats-row" class="grid grid-cols-3 gap-3"></div>
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
       <div class="flex items-center justify-between mb-3">
@@ -76,6 +99,7 @@
     <button onclick="reset()" class="w-full py-3 rounded-2xl text-sm font-medium text-gray-500 border border-gray-200 bg-white">Procesar otro chat</button>
   </div>
 
+  <!-- ERROR -->
   <div id="s-error" class="hidden">
     <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-6 text-center">
       <div class="text-3xl mb-2">⚠️</div>
@@ -93,6 +117,14 @@ window.addEventListener('DOMContentLoaded', () => {
   const y = new Date(); y.setDate(y.getDate() - 1);
   document.getElementById('date-input').value = y.toISOString().slice(0, 10);
   document.getElementById('date-input').addEventListener('change', onInputChange);
+
+  // Cargar API key guardada
+  const savedKey = localStorage.getItem('nativa_api_key');
+  if (savedKey) {
+    document.getElementById('api-key').value = savedKey;
+    document.getElementById('apikey-block').classList.add('hidden');
+  }
+
   const dz = document.getElementById('drop-zone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
@@ -100,13 +132,26 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('file-input').addEventListener('change', e => handleFile(e.target.files[0]));
 });
 
+function saveKey() {
+  const key = document.getElementById('api-key').value.trim();
+  if (!key) return;
+  localStorage.setItem('nativa_api_key', key);
+  document.getElementById('apikey-block').classList.add('hidden');
+  checkReady();
+}
+
 async function handleFile(file) {
   if (!file?.name.endsWith('.zip')) return;
   zipFile = file;
   document.getElementById('dz-icon').textContent = '⏳';
-  document.getElementById('dz-text').textContent = 'Leyendo archivo...';
+  document.getElementById('dz-text').textContent = 'Leyendo...';
   try {
-    chatText = await extractChat(file);
+    const zip = await JSZip.loadAsync(file);
+    const candidates = [];
+    zip.forEach((path, f) => { if (!f.dir && (path.endsWith('.txt') || path.endsWith('.md'))) candidates.push(f); });
+    if (!candidates.length) throw new Error('No se encontró el chat dentro del ZIP.');
+    candidates.sort((a, b) => (a.name.endsWith('.txt') ? 0 : 1) - (b.name.endsWith('.txt') ? 0 : 1) || a.name.length - b.name.length);
+    chatText = await candidates[0].async('string');
     document.getElementById('dz-icon').textContent = '✅';
     document.getElementById('dz-text').textContent = file.name;
   } catch(e) {
@@ -117,33 +162,14 @@ async function handleFile(file) {
 }
 
 function onInputChange() {
+  const apiKey = document.getElementById('api-key').value.trim() || localStorage.getItem('nativa_api_key');
   const hasFile = !!chatText;
   const hasDate = !!document.getElementById('date-input').value;
-  document.getElementById('btn-process').disabled = !(hasFile && hasDate);
+  document.getElementById('btn-process').disabled = !(apiKey && hasFile && hasDate);
   if (hasFile && hasDate) {
     const key = cacheKey(chatText, document.getElementById('date-input').value);
-    const cached = getCache(key);
-    document.getElementById('cache-notice').classList.toggle('hidden', !cached);
+    document.getElementById('cache-notice').classList.toggle('hidden', !getCache(key));
   }
-}
-
-function cacheKey(text, date) {
-  let h = 0;
-  const s = date + text.slice(0, 1000);
-  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
-  return 'nativa_v2_' + Math.abs(h).toString(36);
-}
-
-function getCache(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e) { return null; } }
-function setCache(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
-
-async function extractChat(file) {
-  const zip = await JSZip.loadAsync(file);
-  const candidates = [];
-  zip.forEach((path, f) => { if (!f.dir && (path.endsWith('.txt') || path.endsWith('.md'))) candidates.push(f); });
-  if (!candidates.length) throw new Error('No se encontró el archivo de chat en el ZIP.');
-  candidates.sort((a, b) => (a.name.endsWith('.txt') ? 0 : 1) - (b.name.endsWith('.txt') ? 0 : 1) || a.name.length - b.name.length);
-  return await candidates[0].async('string');
 }
 
 function filterByDate(text, dateISO) {
@@ -161,9 +187,20 @@ function filterByDate(text, dateISO) {
   return result.join('\n');
 }
 
+function cacheKey(text, date) {
+  let h = 0;
+  const s = date + text.slice(0, 1000);
+  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+  return 'nativa_v3_' + Math.abs(h).toString(36);
+}
+function getCache(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e) { return null; } }
+function setCache(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
+
 async function startProcessing() {
   show('s-loading');
   const dateStr = document.getElementById('date-input').value;
+  const apiKey = document.getElementById('api-key').value.trim() || localStorage.getItem('nativa_api_key');
+
   try {
     const filtered = filterByDate(chatText, dateStr);
     if (!filtered.trim()) throw new Error('No se encontraron mensajes en esa fecha.');
@@ -173,134 +210,179 @@ async function startProcessing() {
     let fromCache = !!data;
 
     if (!data) {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatText: filtered, date: dateStr })
+      const guiaMatches = filtered.match(/\b5\d{6}\b/g) || [];
+      const guiasUnicas = [...new Set(guiaMatches)].sort();
+
+      // Solo líneas relevantes para reducir tokens
+      const guiaPat = /\b5\d{6}\b/;
+      const flines = filtered.split('\n');
+      const compact = [];
+      flines.forEach((line, i) => {
+        if (guiaPat.test(line)) {
+          for (let j = Math.max(0,i-2); j <= Math.min(flines.length-1,i+4); j++) {
+            if (!compact.includes(flines[j])) compact.push(flines[j]);
+          }
+        }
       });
+
+      const prompt = `Eres un asistente de operaciones logísticas. Analiza este chat de WhatsApp del grupo "Nativa SV x Drop" del día ${dateStr.split('-').reverse().join('/')}.
+
+GUÍAS: ${guiasUnicas.join(', ')}
+Incluye UNA entrada por cada guía.
+
+TRANSPORTADORA: +503 6965 7706, +503 7613 8221, Boxful, VIP SV, Josias
+NATIVA: Tú, Nativa Essential, Nativa Essential SLV, Daniela Jimenez, Daniela
+
+SECCIONES:
+- "novedades": transportadora mencionó la guía primero
+- "seguimientos": Nativa la mencionó primero
+
+CLASIFICACIÓN (exactamente "SI", "NO", "PARCIAL", "CRITICO"):
+- SI: cliente confirmó entrega concreta, devolución ordenada, confirmado recibido
+- NO: Nativa nunca respondió
+- PARCIAL: solo "en contacto" sin resultado, fecha cambiada sin confirmar
+- CRITICO: escalado sin respuesta, entregado pero no recibido, guía anulada con disputa
+
+FORMATO JSON responde SOLO con esto:
+{"novedades":[{"num":1,"guia":"","hora":"","razon":"","respuesta":"","contesto":"SI|NO|PARCIAL|CRITICO","notas":""}],"seguimientos":[...],"stats":{"total":${guiasUnicas.length},"resueltas":0,"pendientes":0,"criticos":0,"pct_resueltas":0,"motivo_frecuente":""}}
+
+CHAT:
+${compact.join('\n')}`;
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4000,
+          temperature: 0,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Error del servidor: ${res.status}`);
+        throw new Error(err.error?.message || `Error API: ${res.status}`);
       }
-      data = await res.json();
+
+      const apiData = await res.json();
+      const rawText = apiData.content?.find(b => b.type === 'text')?.text || '';
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      data = JSON.parse(clean);
       if (!data.novedades) throw new Error('La IA no devolvió datos válidos.');
+
+      // Mapear y calcular stats
+      const map = { 'SI':'✅ SÍ','NO':'❌ SIN RESPUESTA','PARCIAL':'⚠️ PARCIAL','CRITICO':'⚠️ CRITICO' };
+      const todos = [...(data.novedades||[]), ...(data.seguimientos||[])];
+      todos.forEach(r => { r.contesto = map[r.contesto] || r.contesto; });
+      const resueltas = todos.filter(r => r.contesto==='✅ SÍ').length;
+      data.stats = {
+        total: todos.length,
+        resueltas,
+        pendientes: todos.filter(r => r.contesto==='❌ SIN RESPUESTA').length,
+        criticos: todos.filter(r => r.contesto?.includes('⚠️')).length,
+        pct_resueltas: todos.length > 0 ? Math.round(resueltas*100/todos.length) : 0,
+        motivo_frecuente: data.stats?.motivo_frecuente || 'cliente no responde llamadas'
+      };
       setCache(key, data);
     }
 
     excelBytes = buildExcel(data, dateStr);
-    const report = buildReport(data.stats, dateStr);
-    showResults(data.stats, report, fromCache);
+    showResults(data.stats, buildReport(data.stats, dateStr), fromCache);
 
-  } catch (err) {
+  } catch(err) {
     document.getElementById('error-msg').textContent = err.message;
     show('s-error');
   }
 }
 
 function buildExcel(data, dateISO) {
-  const [y, m, d] = dateISO.split('-');
+  const [y,m,d] = dateISO.split('-');
   const label = `${d} / ${m} / ${y}`;
-  const ws = {}, merges = [], rowMeta = [];
-  const B = { top:{style:'thin',color:{rgb:'CCCCCC'}}, bottom:{style:'thin',color:{rgb:'CCCCCC'}}, left:{style:'thin',color:{rgb:'CCCCCC'}}, right:{style:'thin',color:{rgb:'CCCCCC'}} };
-  const s = (rgb, font, aln) => ({ fill:{patternType:'solid',fgColor:{rgb}}, font, alignment:aln, border:B });
-  const wb_ = sz => ({ bold:true, color:{rgb:'FFFFFF'}, sz, name:'Arial' });
-  const nb_ = sz => ({ bold:false, color:{rgb:'000000'}, sz, name:'Arial' });
-  const cc = { horizontal:'center', vertical:'center', wrapText:true };
-  const lt = { horizontal:'left', vertical:'top', wrapText:true };
-  const lc = { horizontal:'left', vertical:'center', wrapText:true };
-  const ST = { title:s('E63946',wb_(12),cc), sec:s('2B2D42',wb_(9),cc), hdr:s('1A1A2E',wb_(8),cc) };
-  const HDRS = ['#','N° GUÍA','HORA','RAZÓN DE LA NOVEDAD','RESPUESTA DADA','¿CONTESTÓ?','SEGUIMIENTO / NOTAS'];
-
-  function bgColor(c, alt) {
-    if (c.includes('SIN RESPUESTA')) return 'FFF3CD';
-    if (c.includes('CRITICO') || c.includes('PARCIAL')) return 'FFDCCC';
-    return alt ? 'F8F9FA' : 'FFFFFF';
-  }
-  function cel(r, col, v, st) { ws[XLSX.utils.encode_cell({r,c:col})] = {v:String(v??''),t:'s',s:st}; }
-  function merge(r) { merges.push({s:{r,c:0},e:{r,c:6}}); }
-
-  function section(r0, title, rows) {
-    cel(r0,0,title,ST.sec); merge(r0); rowMeta.push({hpx:22}); r0++;
-    HDRS.forEach((h,i) => cel(r0,i,h,ST.hdr)); rowMeta.push({hpx:26}); r0++;
-    rows.forEach((row, i) => {
-      const fill = bgColor(row.contesto||'', i%2===1);
-      const dL = s(fill,nb_(7.5),lt), dC = s(fill,nb_(7.5),cc);
-      [row.num,row.guia,row.hora,row.razon,row.respuesta,row.contesto,row.notas]
-        .forEach((v,col) => cel(r0,col,v,(col===0||col===2||col===5)?dC:dL));
-      rowMeta.push({hpx:56}); r0++;
+  const ws={}, merges=[], rowMeta=[];
+  const B={top:{style:'thin',color:{rgb:'CCCCCC'}},bottom:{style:'thin',color:{rgb:'CCCCCC'}},left:{style:'thin',color:{rgb:'CCCCCC'}},right:{style:'thin',color:{rgb:'CCCCCC'}}};
+  const s=(rgb,font,aln)=>({fill:{patternType:'solid',fgColor:{rgb}},font,alignment:aln,border:B});
+  const wb_=sz=>({bold:true,color:{rgb:'FFFFFF'},sz,name:'Arial'});
+  const nb_=sz=>({bold:false,color:{rgb:'000000'},sz,name:'Arial'});
+  const cc={horizontal:'center',vertical:'center',wrapText:true};
+  const lt={horizontal:'left',vertical:'top',wrapText:true};
+  const lc={horizontal:'left',vertical:'center',wrapText:true};
+  const ST={title:s('E63946',wb_(12),cc),sec:s('2B2D42',wb_(9),cc),hdr:s('1A1A2E',wb_(8),cc)};
+  const HDRS=['#','N° GUÍA','HORA','RAZÓN DE LA NOVEDAD','RESPUESTA DADA','¿CONTESTÓ?','SEGUIMIENTO / NOTAS'];
+  function bgColor(c,alt){if(c.includes('SIN RESPUESTA'))return 'FFF3CD';if(c.includes('CRITICO')||c.includes('PARCIAL'))return 'FFDCCC';return alt?'F8F9FA':'FFFFFF';}
+  function cel(r,col,v,st){ws[XLSX.utils.encode_cell({r,c:col})]={v:String(v??''),t:'s',s:st};}
+  function merge(r){merges.push({s:{r,c:0},e:{r,c:6}});}
+  function section(r0,title,rows){
+    cel(r0,0,title,ST.sec);merge(r0);rowMeta.push({hpx:22});r0++;
+    HDRS.forEach((h,i)=>cel(r0,i,h,ST.hdr));rowMeta.push({hpx:26});r0++;
+    rows.forEach((row,i)=>{
+      const fill=bgColor(row.contesto||'',i%2===1);
+      const dL=s(fill,nb_(7.5),lt),dC=s(fill,nb_(7.5),cc);
+      [row.num,row.guia,row.hora,row.razon,row.respuesta,row.contesto,row.notas].forEach((v,col)=>cel(r0,col,v,(col===0||col===2||col===5)?dC:dL));
+      rowMeta.push({hpx:56});r0++;
     });
-    rowMeta.push({hpx:8}); return r0+1;
+    rowMeta.push({hpx:8});return r0+1;
   }
-
-  cel(0,0,`NOVEDADES NATIVA SV — ${label}`,ST.title); merge(0); rowMeta.push({hpx:28});
+  cel(0,0,`NOVEDADES NATIVA SV — ${label}`,ST.title);merge(0);rowMeta.push({hpx:28});
   rowMeta.push({hpx:6});
-  let r = section(2,'📦  NOVEDADES DE ENTREGA  —  Reportadas por Boxful Customer Success / VIP SV', data.novedades||[]);
-  r = section(r,'📋  SEGUIMIENTOS PROACTIVOS  —  Nativa Essential al equipo Drop / VIP SV', data.seguimientos||[]);
-  cel(r,0,'LEYENDA: Blanco/gris = ✅ Con respuesta  |  Amarillo = ❌ Sin respuesta  |  Salmón = ⚠️ Crítico / Parcial',
-    {font:{italic:true,color:{rgb:'555555'},sz:7,name:'Arial'},alignment:lc});
-  merge(r); rowMeta.push({hpx:16});
-
-  ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r,c:6}});
-  ws['!merges'] = merges;
-  ws['!cols'] = [5,14,13,42,62,24,35].map(w=>({wch:w}));
-  ws['!rows'] = rowMeta;
-  ws['!views'] = [{state:'frozen',ySplit:4}];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `Novedades ${d}-${m}-${y}`);
-  return XLSX.write(wb, {type:'array',bookType:'xlsx'});
+  let r=section(2,'📦  NOVEDADES DE ENTREGA  —  Reportadas por Boxful Customer Success / VIP SV',data.novedades||[]);
+  r=section(r,'📋  SEGUIMIENTOS PROACTIVOS  —  Nativa Essential al equipo Drop / VIP SV',data.seguimientos||[]);
+  cel(r,0,'LEYENDA: Blanco/gris = ✅ Con respuesta  |  Amarillo = ❌ Sin respuesta  |  Salmón = ⚠️ Crítico / Parcial',{font:{italic:true,color:{rgb:'555555'},sz:7,name:'Arial'},alignment:lc});
+  merge(r);rowMeta.push({hpx:16});
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r,c:6}});
+  ws['!merges']=merges;ws['!cols']=[5,14,13,42,62,24,35].map(w=>({wch:w}));
+  ws['!rows']=rowMeta;ws['!views']=[{state:'frozen',ySplit:4}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,`Novedades ${d}-${m}-${y}`);
+  return XLSX.write(wb,{type:'array',bookType:'xlsx'});
 }
 
 function buildReport(stats, dateISO) {
-  const [y,m,d] = dateISO.split('-');
-  const crit = stats.criticos;
-  return `📋 *CIERRE DE NOVEDADES — ${d}/${m}/${y}*
-
-Se gestionaron *${stats.total} novedades* el día de ayer. El *${stats.pct_resueltas}%* quedó resuelto en el día.
-
-El motivo más frecuente fue *${stats.motivo_frecuente}*.
-
-Quedaron *${stats.pendientes} pendientes* sin cierre${crit>0?` y *${crit} caso${crit>1?'s':''}* crítico${crit>1?'s':''} que requieren respuesta de la transportadora`:''}.
-
-El archivo de detalle ya fue enviado a la plataforma logística. ✅`;
+  const [y,m,d]=dateISO.split('-');
+  const crit=stats.criticos;
+  return `📋 *CIERRE DE NOVEDADES — ${d}/${m}/${y}*\n\nSe gestionaron *${stats.total} novedades* el día de ayer. El *${stats.pct_resueltas}%* quedó resuelto en el día.\n\nEl motivo más frecuente fue *${stats.motivo_frecuente}*.\n\nQuedaron *${stats.pendientes} pendientes* sin cierre${crit>0?` y *${crit} caso${crit>1?'s':''}* crítico${crit>1?'s':''} que requieren respuesta de la transportadora`:''}.\n\nEl archivo de detalle ya fue enviado a la plataforma logística. ✅`;
 }
 
 function showResults(stats, report, fromCache) {
-  const pend = stats.pendientes + stats.criticos;
-  document.getElementById('cached-badge').classList.toggle('hidden', !fromCache);
-  document.getElementById('stats-row').innerHTML = [
-    ['Total', stats.total, '#1A1A2E'],
-    [`${stats.pct_resueltas}% resueltas`, stats.resueltas, '#22c55e'],
-    [`${pend} pendientes`, pend, stats.criticos > 0 ? '#E63946' : '#f59e0b']
-  ].map(([l,v,color]) => `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center"><div class="text-2xl font-bold" style="color:${color}">${v}</div><div class="text-xs text-gray-500 mt-1">${l}</div></div>`).join('');
-  document.getElementById('report-text').textContent = report;
+  const pend=stats.pendientes+stats.criticos;
+  document.getElementById('cached-badge').classList.toggle('hidden',!fromCache);
+  document.getElementById('stats-row').innerHTML=[
+    ['Total',stats.total,'#1A1A2E'],
+    [`${stats.pct_resueltas}% resueltas`,stats.resueltas,'#22c55e'],
+    [`${pend} pendientes`,pend,stats.criticos>0?'#E63946':'#f59e0b']
+  ].map(([l,v,color])=>`<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center"><div class="text-2xl font-bold" style="color:${color}">${v}</div><div class="text-xs text-gray-500 mt-1">${l}</div></div>`).join('');
+  document.getElementById('report-text').textContent=report;
   show('s-done');
 }
 
 async function copyReport() {
   await navigator.clipboard.writeText(document.getElementById('report-text').textContent);
-  const btn = document.getElementById('copy-btn');
-  btn.textContent = '✅ Copiado'; setTimeout(() => btn.textContent = 'Copiar', 2000);
+  const btn=document.getElementById('copy-btn');
+  btn.textContent='✅ Copiado';setTimeout(()=>btn.textContent='Copiar',2000);
 }
 
 function downloadExcel() {
-  if (!excelBytes) return;
-  const [y,m,d] = document.getElementById('date-input').value.split('-');
-  const blob = new Blob([new Uint8Array(excelBytes)], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=`Novedades_NativaSV_${d}-${m}-${y}.xlsx`; a.click();
+  if(!excelBytes)return;
+  const [y,m,d]=document.getElementById('date-input').value.split('-');
+  const blob=new Blob([new Uint8Array(excelBytes)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`Novedades_NativaSV_${d}-${m}-${y}.xlsx`;a.click();
   URL.revokeObjectURL(url);
 }
 
-function show(id) {
-  ['s-idle','s-loading','s-done','s-error'].forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
-}
+function show(id){['s-idle','s-loading','s-done','s-error'].forEach(s=>document.getElementById(s).classList.toggle('hidden',s!==id));}
 
-function reset() {
-  zipFile = null; excelBytes = null; chatText = null;
-  document.getElementById('dz-icon').textContent = '📂';
-  document.getElementById('dz-text').textContent = 'Arrastrá el .zip del chat o hacé clic aquí';
-  document.getElementById('file-input').value = '';
-  document.getElementById('btn-process').disabled = true;
+function reset(){
+  zipFile=null;excelBytes=null;chatText=null;
+  document.getElementById('dz-icon').textContent='📂';
+  document.getElementById('dz-text').textContent='Arrastrá el .zip del chat o hacé clic aquí';
+  document.getElementById('file-input').value='';
+  document.getElementById('btn-process').disabled=true;
   document.getElementById('cache-notice').classList.add('hidden');
   show('s-idle');
 }
