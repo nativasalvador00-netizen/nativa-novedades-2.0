@@ -11,75 +11,52 @@ module.exports = async function handler(req, res) {
   const [y, m, d] = date.split('-');
   const fecha = `${d}/${m}/${y}`;
 
+  // Solo enviamos líneas que mencionan guías — reduce el input a la mitad
+  const guiaPattern = /\b5\d{6}\b/;
+  const lines = chatText.split('\n');
+  const compactLines = [];
+  lines.forEach((line, i) => {
+    if (guiaPattern.test(line)) {
+      // Incluir 2 líneas de contexto antes y 3 después
+      for (let j = Math.max(0, i-2); j <= Math.min(lines.length-1, i+3); j++) {
+        if (!compactLines.includes(lines[j])) compactLines.push(lines[j]);
+      }
+    }
+  });
+  const compactChat = compactLines.join('\n');
+
   const guiaMatches = chatText.match(/\b5\d{6}\b/g) || [];
   const guiasUnicas = [...new Set(guiaMatches)].sort();
 
   const prompt = `Eres un asistente de operaciones logísticas. Analiza este chat de WhatsApp del grupo "Nativa SV x Drop" del día ${fecha} y extrae las novedades de entrega.
 
-GUÍAS ENCONTRADAS EN EL CHAT: ${guiasUnicas.join(', ')}
-Incluye exactamente UNA entrada por cada guía. No agregues ni quites ninguna.
+GUÍAS EN EL CHAT: ${guiasUnicas.join(', ')}
+Incluye UNA entrada por cada guía. No agregues ni quites ninguna.
 
 QUIÉN ES QUIÉN:
-- TRANSPORTADORA (reporta novedades): +503 6965 7706, +503 7613 8221, +503 6986 6171, Boxful, VIP SV, Josias
-- NATIVA (gestiona): Tú, Nativa Essential, Nativa Essential SLV, Daniela Jimenez, Daniela
+- TRANSPORTADORA: +503 6965 7706, +503 7613 8221, +503 6986 6171, Boxful, VIP SV, Josias
+- NATIVA: Tú, Nativa Essential, Nativa Essential SLV, Daniela Jimenez, Daniela
 
-CLASIFICACIÓN EN DOS SECCIONES:
-- "novedades": la TRANSPORTADORA mencionó la guía primero (reportó un problema)
-- "seguimientos": NATIVA mencionó la guía primero (seguimiento proactivo)
+SECCIONES:
+- "novedades": transportadora mencionó la guía primero
+- "seguimientos": Nativa la mencionó primero
 
-PARA CADA GUÍA, mirá TODOS los mensajes que la mencionan en orden cronológico para determinar el estado FINAL:
+CLASIFICACIÓN (usa exactamente: "SI", "NO", "PARCIAL", "CRITICO"):
+- SI: cliente confirmó fecha/hora concreta, devolución ordenada, entregado y confirmado, recoger en agencia
+- NO: Nativa nunca respondió sobre esa guía
+- PARCIAL: Nativa solo dijo "en contacto" sin resultado posterior, cliente cambió de fecha sin confirmar
+- CRITICO: escalado sin respuesta, entregado pero cliente dice que no recibió, guía anulada con disputa, 3 intentos fallidos
 
-REGLAS DE CLASIFICACIÓN (usa exactamente: "SI", "NO", "PARCIAL", "CRITICO"):
-- "SI" SOLO si hay una resolución definitiva al final del hilo:
-  * El cliente confirmó una fecha/hora CONCRETA de entrega ("confirma mañana viernes a las 3pm", "recibirá el sábado", "puede recibir hoy en 1 hora")
-  * Se ordenó devolución formalmente ("se ordena la devolución", "devolución solicitada")
-  * El cliente confirmó recoger en agencia
-  * El paquete fue entregado y confirmado
+"en contacto" solo = PARCIAL, NO = SI.
 
-- "NO" si:
-  * Nativa no respondió nada sobre esa guía
-  * La transportadora preguntó número alterno y Nativa nunca respondió
+PARA CADA CASO:
+{ "num": N, "guia": "XXXXXXX", "hora": "HH:MM a.m.", "razon": "qué pasó (1-2 oraciones)", "respuesta": "qué hizo Nativa y resultado final", "contesto": "SI|NO|PARCIAL|CRITICO", "notas": "ESTADO FINAL MAYÚSCULAS" }
 
-- "PARCIAL" si:
-  * Nativa solo dijo "en contacto con el cliente" pero NO hay mensaje posterior con resolución concreta
-  * El cliente cambió de fecha durante el día sin confirmar nueva fecha definitiva
-  * Se pidió información a la transportadora y no respondieron
+RESPONDE SOLO CON JSON:
+{ "novedades": [...], "seguimientos": [...], "stats": { "total": ${guiasUnicas.length}, "resueltas": N, "pendientes": N, "criticos": N, "pct_resueltas": N, "motivo_frecuente": "texto" } }
 
-- "CRITICO" si:
-  * El caso fue escalado a personas específicas (Erick Amaya, Guillermo Mejia) sin respuesta
-  * El sistema marca el pedido como entregado pero el cliente dice que NO lo recibió
-  * La guía estaba anulada pero igual salió a reparto y hay disputa de cobro
-  * El cliente bloqueó al mensajero o tercer intento fallido con devolución forzada
-
-IMPORTANTE: "en contacto con el cliente" por sí solo es PARCIAL, no SI. Para ser SI necesita un mensaje POSTERIOR confirmando el resultado.
-
-FORMATO DE CADA CASO:
-{
-  "num": número de orden,
-  "guia": "número exacto",
-  "hora": "hora del primer mensaje sobre esta guía",
-  "razon": "qué reportó la transportadora o qué inició Nativa (1-2 oraciones)",
-  "respuesta": "qué hizo Nativa y qué respondió la transportadora, con el resultado final",
-  "contesto": "SI" | "NO" | "PARCIAL" | "CRITICO",
-  "notas": "ESTADO FINAL EN MAYÚSCULAS (máximo 12 palabras)"
-}
-
-RESPONDE SOLO CON ESTE JSON, sin markdown:
-{
-  "novedades": [...],
-  "seguimientos": [...],
-  "stats": {
-    "total": número total de guías (${guiasUnicas.length}),
-    "resueltas": conteo de SI,
-    "pendientes": conteo de NO,
-    "criticos": conteo de PARCIAL + CRITICO,
-    "pct_resueltas": entero,
-    "motivo_frecuente": "motivo más común en novedades en minúsculas"
-  }
-}
-
-CHAT DEL ${fecha}:
-${chatText}`;
+CHAT:
+${compactChat}`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -90,8 +67,8 @@ ${chatText}`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4000,
         temperature: 0,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -107,7 +84,6 @@ ${chatText}`;
     const clean = rawText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    // Mapear a emojis y recalcular stats en el servidor (no confiar en los de la IA)
     const map = { 'SI':'✅ SÍ', 'NO':'❌ SIN RESPUESTA', 'PARCIAL':'⚠️ PARCIAL', 'CRITICO':'⚠️ CRITICO' };
     const todos = [...(parsed.novedades||[]), ...(parsed.seguimientos||[])];
     todos.forEach(r => { r.contesto = map[r.contesto] || r.contesto; });
@@ -118,10 +94,7 @@ ${chatText}`;
     const total      = todos.length;
 
     parsed.stats = {
-      total,
-      resueltas,
-      pendientes,
-      criticos,
+      total, resueltas, pendientes, criticos,
       pct_resueltas: total > 0 ? Math.round(resueltas * 100 / total) : 0,
       motivo_frecuente: parsed.stats?.motivo_frecuente || 'cliente no responde llamadas'
     };
