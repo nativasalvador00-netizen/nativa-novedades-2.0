@@ -211,7 +211,25 @@ function filterByDate(chatText, dateISO) {
   return result.join('\n');
 }
 
+// Hash simple para identificar combinación zip+fecha
+function hashInput(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) { h = Math.imul(31, h) + str.charCodeAt(i) | 0; }
+  return Math.abs(h).toString(36);
+}
+
 async function analyzeChat(chatText, dateISO) {
+  // Caché: misma fecha + mismo contenido = mismo resultado siempre
+  const cacheKey = `nativa_cache_${hashInput(dateISO + chatText.slice(0, 500))}`;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      console.log('Resultado cacheado — usando análisis previo');
+      return JSON.parse(cached);
+    }
+  } catch (e) {}
+
+  // Primera vez: llamar a la IA
   const res = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -223,6 +241,10 @@ async function analyzeChat(chatText, dateISO) {
   }
   const data = await res.json();
   if (!data.novedades) throw new Error('La IA no devolvió datos válidos.');
+
+  // Guardar en caché para próximas veces
+  try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
+
   return data;
 }
 
