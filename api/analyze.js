@@ -11,45 +11,74 @@ module.exports = async function handler(req, res) {
   const [y, m, d] = date.split('-');
   const fecha = `${d}/${m}/${y}`;
 
-  // Extraccion determinista de guias con regex (no IA)
   const guiaMatches = chatText.match(/\b5\d{6}\b/g) || [];
   const guiasUnicas = [...new Set(guiaMatches)].sort();
 
-  const prompt = `Eres un asistente especializado en operaciones logisticas de dropshipping en El Salvador.
+  const prompt = `Eres un asistente de operaciones logísticas. Analiza este chat de WhatsApp del grupo "Nativa SV x Drop" del día ${fecha} y extrae las novedades de entrega.
 
-Analiza el siguiente chat del grupo "Nativa SV x Drop" del dia ${fecha}.
+GUÍAS ENCONTRADAS EN EL CHAT: ${guiasUnicas.join(', ')}
+Incluye exactamente UNA entrada por cada guía. No agregues ni quites ninguna.
 
-Se encontraron EXACTAMENTE estas guias en el chat: ${guiasUnicas.join(', ')}.
-DEBES incluir una entrada por CADA guia de esa lista, sin agregar ni quitar ninguna.
+QUIÉN ES QUIÉN:
+- TRANSPORTADORA (reporta novedades): +503 6965 7706, +503 7613 8221, +503 6986 6171, Boxful, VIP SV, Josias
+- NATIVA (gestiona): Tú, Nativa Essential, Nativa Essential SLV, Daniela Jimenez, Daniela
 
-Para cada guia determina si fue reportada por la TRANSPORTADORA (Boxful, VIP SV, +503 6965 7706, +503 7613 8221) va en "novedades", o si fue iniciada por NATIVA (Tu:, Nativa Essential, Daniela) va en "seguimientos".
+CLASIFICACIÓN EN DOS SECCIONES:
+- "novedades": la TRANSPORTADORA mencionó la guía primero (reportó un problema)
+- "seguimientos": NATIVA mencionó la guía primero (seguimiento proactivo)
 
-Para cada caso incluye:
-- num: numero de orden
-- guia: numero de guia exacto
-- hora: hora del primer reporte ("10:35 a.m.")
-- razon: que paso (1-2 oraciones en espanol)
-- respuesta: que respondio Nativa y la transportadora (detallado)
-- contesto: EXACTAMENTE una de estas:
-  "Si" = cliente confirmo recibir, se coordino entrega, se ordeno devolucion, o problema resuelto
-  "No" = sin accion registrada, Nativa no respondio, o cliente no contactado
-  "Parcial" = respuesta sin resolucion definitiva, o cliente cambio de fecha
-  "Critico" = caso escalado sin respuesta, entregado pero no recibido, o error grave sin resolver
-- notas: estado final en MAYUSCULAS
+PARA CADA GUÍA, mirá TODOS los mensajes que la mencionan en orden cronológico para determinar el estado FINAL:
 
-Nota: En el JSON usa exactamente estos valores para contesto: "SI", "NO", "PARCIAL", "CRITICO"
+REGLAS DE CLASIFICACIÓN (usa exactamente: "SI", "NO", "PARCIAL", "CRITICO"):
+- "SI" SOLO si hay una resolución definitiva al final del hilo:
+  * El cliente confirmó una fecha/hora CONCRETA de entrega ("confirma mañana viernes a las 3pm", "recibirá el sábado", "puede recibir hoy en 1 hora")
+  * Se ordenó devolución formalmente ("se ordena la devolución", "devolución solicitada")
+  * El cliente confirmó recoger en agencia
+  * El paquete fue entregado y confirmado
 
-STATS:
-- total: ${guiasUnicas.length} (fijo, es el numero exacto de guias encontradas)
-- resueltas: cuantas tienen contesto "SI"
-- pendientes: cuantas tienen contesto "NO"
-- criticos: cuantas tienen contesto "PARCIAL" o "CRITICO"
-- pct_resueltas: entero (resueltas * 100 / total)
-- motivo_frecuente: motivo mas comun en novedades (minusculas)
+- "NO" si:
+  * Nativa no respondió nada sobre esa guía
+  * La transportadora preguntó número alterno y Nativa nunca respondió
 
-RESPONDE SOLO CON JSON VALIDO. Sin markdown ni texto adicional.
+- "PARCIAL" si:
+  * Nativa solo dijo "en contacto con el cliente" pero NO hay mensaje posterior con resolución concreta
+  * El cliente cambió de fecha durante el día sin confirmar nueva fecha definitiva
+  * Se pidió información a la transportadora y no respondieron
 
-CHAT:
+- "CRITICO" si:
+  * El caso fue escalado a personas específicas (Erick Amaya, Guillermo Mejia) sin respuesta
+  * El sistema marca el pedido como entregado pero el cliente dice que NO lo recibió
+  * La guía estaba anulada pero igual salió a reparto y hay disputa de cobro
+  * El cliente bloqueó al mensajero o tercer intento fallido con devolución forzada
+
+IMPORTANTE: "en contacto con el cliente" por sí solo es PARCIAL, no SI. Para ser SI necesita un mensaje POSTERIOR confirmando el resultado.
+
+FORMATO DE CADA CASO:
+{
+  "num": número de orden,
+  "guia": "número exacto",
+  "hora": "hora del primer mensaje sobre esta guía",
+  "razon": "qué reportó la transportadora o qué inició Nativa (1-2 oraciones)",
+  "respuesta": "qué hizo Nativa y qué respondió la transportadora, con el resultado final",
+  "contesto": "SI" | "NO" | "PARCIAL" | "CRITICO",
+  "notas": "ESTADO FINAL EN MAYÚSCULAS (máximo 12 palabras)"
+}
+
+RESPONDE SOLO CON ESTE JSON, sin markdown:
+{
+  "novedades": [...],
+  "seguimientos": [...],
+  "stats": {
+    "total": número total de guías (${guiasUnicas.length}),
+    "resueltas": conteo de SI,
+    "pendientes": conteo de NO,
+    "criticos": conteo de PARCIAL + CRITICO,
+    "pct_resueltas": entero,
+    "motivo_frecuente": "motivo más común en novedades en minúsculas"
+  }
+}
+
+CHAT DEL ${fecha}:
 ${chatText}`;
 
   try {
@@ -62,7 +91,7 @@ ${chatText}`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
+        max_tokens: 8000,
         temperature: 0,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -70,31 +99,24 @@ ${chatText}`;
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      return res.status(response.status).json({ error: err.error?.message || `Error API: ${response.status}` });
+      return res.status(response.status).json({ error: err.error?.message || `Error ${response.status}` });
     }
 
     const data = await response.json();
-    const text = data.content?.find(b => b.type === 'text')?.text || '';
-    const clean = text.replace(/```json|```/g, '').trim();
+    const rawText = data.content?.find(b => b.type === 'text')?.text || '';
+    const clean = rawText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    // Mapear contesto de vuelta a emojis para el frontend
-    const mapContesto = (c) => {
-      if (c === 'SI')      return '✅ SÍ';
-      if (c === 'NO')      return '❌ SIN RESPUESTA';
-      if (c === 'PARCIAL') return '⚠️ PARCIAL';
-      if (c === 'CRITICO') return '⚠️ CRITICO';
-      return c;
-    };
-    (parsed.novedades || []).forEach(r => r.contesto = mapContesto(r.contesto));
-    (parsed.seguimientos || []).forEach(r => r.contesto = mapContesto(r.contesto));
+    // Mapear a emojis y recalcular stats en el servidor (no confiar en los de la IA)
+    const map = { 'SI':'✅ SÍ', 'NO':'❌ SIN RESPUESTA', 'PARCIAL':'⚠️ PARCIAL', 'CRITICO':'⚠️ CRITICO' };
+    const todos = [...(parsed.novedades||[]), ...(parsed.seguimientos||[])];
+    todos.forEach(r => { r.contesto = map[r.contesto] || r.contesto; });
 
-    // Calcular stats directamente en el servidor (no depender de la IA)
-    const todos = [...(parsed.novedades || []), ...(parsed.seguimientos || [])];
     const resueltas = todos.filter(r => r.contesto === '✅ SÍ').length;
     const pendientes = todos.filter(r => r.contesto === '❌ SIN RESPUESTA').length;
     const criticos   = todos.filter(r => r.contesto?.includes('⚠️')).length;
     const total      = todos.length;
+
     parsed.stats = {
       total,
       resueltas,
@@ -105,7 +127,6 @@ ${chatText}`;
     };
 
     res.json(parsed);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
